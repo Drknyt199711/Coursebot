@@ -1,0 +1,65 @@
+{
+  "bot": {
+    "api_token": "YOUR_BOT_API_TOKEN_HERE",
+    "admin_user_id": 7637175761,
+    "payment_confirmation_channel_id": -1002627956917,
+    "expiry_notification_group_id": -1002591629858
+  },
+  "messages": {
+    "welcome": "Hello, {user_mention}! Welcome to the online course enrollment system. To get started, please provide your full name.",
+    "ask_phone": "Thank you! Now, please provide your Ethiopian phone number. Example: 0912345678 or +251912345678",
+    "invalid_phone": "That doesn't seem to be a valid Ethiopian phone number format. Please try again. Example: 0912345678 or +251912345678",
+    "ask_course": "Great! Now, please select the course you would like to enroll in:",
+    "payment_instructions": "You have selected: {course_name}.\n\nPlease make a payment of {course_price} ETB to the following bank account and send us a photo of the receipt.\n\n{bank_details}\n\nAfter you have made the payment, please send the photo of the receipt to me in this chat. You can now send the image directly.",
+    "enrollment_success": "Thank you for submitting your enrollment form! Your payment is now pending verification. We will notify you once it's confirmed.",
+    "admin_notification": "NEW ENROLLMENT PENDING!\n\nTelegram User ID: {user_id}\nName: {user_name}\nPhone: {phone_number}\nCourse: {course_name}\n\nAction: /verify_{user_id} or /deny_{user_id}",
+    "verification_success_student": "Congratulations, {user_name}! Your payment for the course has been verified. You now have access to our exclusive course content!",
+    "verification_success_admin": "Student {user_name} ({user_id}) verified and added to the course group.",
+    "verification_fail_student": "We encountered an issue verifying your payment. Please ensure your receipt is clear or contact support if you believe this is an error.",
+    "verification_fail_admin": "Student {user_name} ({user_id}) payment denied.",
+    "certificate_eligibility": "Congratulations, {user_mention}! You have completed the waiting period for your course: {course_name}. You can now apply for a certificate for a fee of {certificate_price} ETB. Click the button below to start the process!",
+    "certificate_ask": "You have selected to apply for the certificate for the '{course_name}' course. The cost is {certificate_price} ETB.\n\nPlease make a payment to the following bank account and send us a photo of the receipt.\n\n{bank_details}\n\nAfter you have made the payment, please send the photo of the receipt to me in this chat.",
+    "certificate_pending": "Thank you! Your certificate payment is now pending verification. We will notify you once it's confirmed.",
+    "certificate_pending_admin_notification": "NEW CERTIFICATE PAYMENT PENDING!\n\nTelegram User ID: {user_id}\nName: {user_name}\nCourse: {course_name}\n\nAction: /cert_verify_{user_id} or /cert_deny_{user_id}",
+    "certificate_verified_student": "Congratulations, {user_name}! Your certificate payment has been verified. We will now prepare your certificate.",
+    "certificate_verified_admin": "Certificate payment for student {user_name} ({user_id}) verified.",
+    "certificate_denied_student": "There was an issue verifying your certificate payment. Please try again or contact support if you believe this is an error.",
+    "certificate_denied_admin": "Certificate payment for student {user_name} ({user_id}) denied.",
+    "active_list": "Active Students (and their expiry dates):\n\n{student_list}",
+    "pending_list": "Pending Students:\n\n{student_list}",
+    "expired_list": "Expired Students:\n\n{student_list}",
+    "course_expiry_student": "Hello {user_mention},\n\nYour access to the '{course_name}' course has come to an end. We hope you enjoyed the content! If you'd like to rejoin, you can click the button below to re-enroll.",
+    "course_expiry_admin": "AUTOMATED REMOVAL: Student {user_name} ({user_id}) has been automatically removed from the '{course_name}' group because their access period has ended."
+  },
+  "courses": [
+    {
+      "name": "CapCut Video Editing Course",
+      "price": 800,
+      "group_id": -1002659528888,
+      "duration_days": 90,
+      "certificate_price": 500,
+      "certificate_wait_days": 30
+    },
+    {
+      "name": "Adobe Premiere Pro Course",
+      "price": 800,
+      "group_id": -1002621458888,
+      "duration_days": 90,
+      "certificate_price": 500,
+      "certificate_wait_days": 30
+    },
+    {
+      "name": "Both Courses (Bundle)",
+      "price": 1500,
+      "group_id": -1002871752888,
+      "duration_days": 120,
+      "certificate_price": 800,
+      "certificate_wait_days": 60
+    }
+  ],
+  "bank_details": {
+    "name": "Commercial Bank of Ethiopia",
+    "account_holder": "Dawit Fromsa",
+    "account_number": "1000649392157"
+  }
+}

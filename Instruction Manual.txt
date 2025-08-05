@@ -1,0 +1,79 @@
+Bot Operating Manual: Your Complete Guide to the Enrollment and Management System
+Table of Contents
+ * Introduction: What This System Does
+ * Getting Started: Pre-Launch Checklist
+ * Daily Operations: The Student and Admin Experience
+ * Advanced Management: Post-Launch Automation and Commands
+ * Maintenance and Troubleshooting
+1. Introduction: What This System Does
+Congratulations on your new bot-powered course academy! This system is a powerful and automated tool designed to handle all aspects of student enrollment, payment verification, course access, and certificate applications.
+The bot operates through a series of conversations with students and a set of private commands for you, the administrator. It is highly configurable, meaning you can adjust courses, prices, messages, and more without ever touching the core programming code.
+This manual will guide you through setting up, operating, and managing your academy from before your first student to well after your launch.
+2. Getting Started: Pre-Launch Checklist
+This is the most critical phase. Ensure you follow these steps carefully before you launch any advertisements for your academy.
+2.1 Prerequisites
+Before running the bot, you must have the following ready:
+ * A Telegram Bot Token: You get this by talking to the BotFather on Telegram.
+ * Admin User ID: This is your personal Telegram user ID.
+ * Course Groups: You need to have created separate Telegram groups for each course you are offering. The bot will automatically add students to these groups.
+ * Admin Channels: You need two separate Telegram channels/groups for bot notifications:
+   * A Payment Confirmation Channel: Where all payment receipts for both courses and certificates will be sent for your review.
+   * An Expiry Notification Channel: Where the bot will inform you about students who have been automatically removed due to their course duration ending.
+2.2 The config.json File
+This file is your control panel for the entire bot. You will edit this file to set up all your academy's details.
+ * bot Section:
+   * api_token: Replace YOUR_BOT_API_TOKEN_HERE with the token you received from BotFather.
+   * admin_user_id: Enter your personal Telegram user ID.
+   * payment_confirmation_channel_id: Get the ID of your payment channel and enter it here. (To get a channel ID, forward a message from the channel to a bot like GetMyID or simply start a conversation with your bot in the channel and a message from your bot to the channel and you will see the chat id in the code.)
+   * expiry_notification_group_id: Enter the ID of your expiry notification channel.
+ * messages Section:
+   * This section contains every single message the bot sends to users and to you. You can customize the wording of any message here. The {} placeholders (e.g., {user_mention}) are important and should be left as they are, as the bot fills them in automatically.
+ * courses Section:
+   * This is a list of all your courses. Each course is an object with several keys you must configure:
+     * name: The name of the course as it will appear on the button.
+     * price: The price for the course enrollment.
+     * group_id: The ID of the Telegram group for this specific course.
+     * duration_days: The number of days a student's access to the group will last.
+     * certificate_price: The cost for the certificate for this course.
+     * certificate_wait_days: The number of days a student must wait after enrolling before they can apply for a certificate.
+ * bank_details Section:
+   * Fill in your correct banking information here.
+2.3 Deployment and First Run
+ * Install Dependencies: Open a terminal in the folder containing your bot files and run pip install -r requirements.txt. This ensures all necessary libraries are installed.
+ * Run the Bot: Launch the bot by running python main.py in your terminal.
+ * Database Check: The first time you run the bot, it will automatically create a file named students.db. This confirms the system is working and the database is ready.
+3. Daily Operations: The Student and Admin Experience
+3.1 The Enrollment Process (Student View)
+ * A student uses the /start command in a private chat with the bot.
+ * The bot greets them and asks for their full name.
+ * It then asks for their phone number, validating that it is in an Ethiopian format.
+ * Next, it presents a set of buttons with the course options from your config.json.
+ * After the student selects a course, the bot provides the payment instructions with the correct course price.
+ * The student sends a photo of their payment receipt directly to the bot.
+ * The bot confirms receipt and informs the student that their enrollment is pending verification.
+3.2 Admin Verification Workflow
+ * As soon as a student sends their receipt, the bot posts a message and the receipt photo in your payment_confirmation_channel.
+ * The message includes the student's details and two unique commands: /verify_<user_id> and /deny_<user_id>.
+ * To approve the student, simply copy and paste the /verify_<user_id> command into the chat. The bot will then:
+   * Update the student's status to 'verified' in the database.
+   * Automatically add the student to the correct course group.
+   * Send a congratulatory message to the student.
+ * To deny the student, use the /deny_<user_id> command. The bot will update their status and inform the student of the denial.
+4. Advanced Management: Post-Launch Automation and Commands
+4.1 Automated Student Management
+This system automates key administrative tasks in the background:
+ * Course Expiry: A scheduled job runs daily to check the expiry date of every verified student. If a student's duration_days has passed, the bot will automatically remove them from their course group and send a notification to both the student and your expiry_notification_group. The student will receive a "Re-enroll" button to seamlessly rejoin.
+ * Certificate Eligibility: The same job checks for students who have passed their certificate_wait_days and haven't applied yet. It sends a proactive message to these students, informing them they can now apply for a certificate.
+4.2 Certificate Application and Verification
+ * Student's View: Students can use the /certificate command to start the process. The bot will first check if they have waited the correct number of days. If so, it will guide them through a separate payment process for the certificate.
+ * Admin's View: When a student submits a certificate payment, you will receive a notification in your payment_confirmation_channel with two new commands: /cert_verify_<user_id> and /cert_deny_<user_id>. These commands work identically to the enrollment commands, but they manage the certificate status instead.
+4.3 Administrative Dashboard Commands
+These commands are for your use only and provide a full overview of your student base.
+ * /pending: Use this command to see a list of all students with pending course enrollments or certificate payments.
+ * /active: This command shows you all currently active students, their course, and the exact date their access will expire.
+ * /expired: This command lists all students who have been automatically removed from their course groups.
+5. Maintenance and Troubleshooting
+ * Updating Settings: All changes to messages, prices, or courses are made in the config.json file. After making a change, you must save the file and restart the bot for the changes to take effect.
+ * Bot is Offline: If the bot stops responding, check your terminal for any error messages. The most common solution is to restart the bot by running python main.py again.
+ * Data Backup: Your student data is all stored in the students.db file. It's a good practice to periodically back up this file to a safe location.
+With this guide, you are fully equipped to manage your academy. If you have any further questions, feel free to consult this manual or reach out for assistance.
