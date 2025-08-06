@@ -1,30 +1,30 @@
-# backup.py - Run this daily via Render Cron Job
+# backup.py - Place in your repo root
 import sqlite3
 import os
 from datetime import datetime
 
-# 1. Define Paths (Render-specific)
+# 1. Configure Paths
 DB_PATH = "/opt/render/project/src/students.db"
-BACKUP_DIR = "/opt/render/project/src/backups/"
+BACKUP_DIR = os.getenv("BACKUP_DIR")
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# 2. Create SQL Dump (Text format - safe for Git)
-timestamp = datetime.now().strftime("%Y%m%d")
+# 2. Create SQL Dump (Text Format)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 backup_file = f"{BACKUP_DIR}students_{timestamp}.sql"
 
 with sqlite3.connect(DB_PATH) as conn:
     with open(backup_file, 'w') as f:
-        for line in conn.iterdump():  # Convert DB to SQL commands
+        for line in conn.iterdump():  # Convert DB to SQL
             f.write(f"{line}\n")
 
-print(f"Backup saved to {backup_file}")
-
-# 3. Push to GitHub (No SSH needed)
+# 3. Push to GitHub
 os.system(f"""
-    cd /opt/render/project/src &&
-    git config --global user.email "bot@render.com" &&
-    git config --global user.name "Render Bot" &&
-    git add backups/ &&
-    git commit -m "Daily backup {timestamp}" &&
-    git push https://{YOUR_GITHUB_TOKEN}@github.com/your-username/your-repo.git main
+cd /opt/render/project/src &&
+git config --global user.email "bot@render.com" &&
+git config --global user.name "Render Bot" &&
+git add backups/ &&
+git commit -m "Automatic backup {timestamp}" &&
+git push https://{os.getenv('GITHUB_TOKEN')}@github.com/your-username/your-repo.git main
 """)
+
+print(f"✅ Backup saved to {backup_file}")
