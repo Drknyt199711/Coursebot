@@ -46,19 +46,18 @@ BANK_DETAILS = (
     ASKING_FULL_NAME,
     ASKING_PHONE_NUMBER,
     ASKING_COURSE_SELECTION,
-    WAITING_FOR_RECEIPT
-) = range(4)
-
-# Conversation states for certificate
-(
+    WAITING_FOR_RECEIPT,
     ASKING_CERTIFICATE_CONFIRMATION,
-    WAITING_FOR_CERTIFICATE_RECEIPT
-) = range(4, 6)
-
+    WAITING_FOR_CERTIFICATE_RECEIPT,
+    EDITING_CONFIG_SECTION,
+    EDITING_CONFIG_KEY,
+    EDITING_CONFIG_VALUE,
+    EDITING_COURSE_INDEX,
+    EDITING_COURSE_FIELD
+) = range(11)
 
 # Ethiopian phone number regex
 ETHIOPIAN_PHONE_REGEX = r'^(\+251|0)?(9|7)[0-9]{8}$'
-
 
 # --- Helper Functions ---
 
@@ -131,7 +130,6 @@ async def check_expiry_and_notify(context: ContextTypes.DEFAULT_TYPE) -> None:
                 except Exception as e:
                     logger.error(f"Failed to send expiry notification to admin channel: {e}")
 
-
         # Check for certificate eligibility
         cert_eligible_date = verification_date + datetime.timedelta(days=course_details['certificate_wait_days'])
         student_info = database.get_student_info(user_id)
@@ -159,8 +157,6 @@ async def check_expiry_and_notify(context: ContextTypes.DEFAULT_TYPE) -> None:
                 except Exception as e:
                     logger.error(f"Failed to send certificate eligibility message to student {user_id}: {e}")
 
-# ... other functions ...
-
 async def reload_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reloads the configuration from config.json."""
     user_id = update.effective_user.id
@@ -170,21 +166,15 @@ async def reload_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     global config
     global PAYMENT_CONFIRMATION_CHANNEL_ID
-    global COURSE_MANAGER_CHANNEL_ID
-    global courses
-    global COURSE_OPTIONS # New: Add this to update the keyboard options
-    global BANK_DETAILS # New: Add this to update bank details
+    global COURSE_OPTIONS
+    global BANK_DETAILS
 
     try:
         with open('config.json', 'r', encoding='utf-8') as f:
             config = json.load(f)
 
-        # Re-assign global variables from the reloaded config
         PAYMENT_CONFIRMATION_CHANNEL_ID = config['bot']['payment_confirmation_channel_id']
         EXPIRY_NOTIFICATION_GROUP_ID = config['bot']['expiry_notification_group_id']
-        courses = config['courses']
-        
-        # New: Rebuild the COURSE_OPTIONS list and BANK_DETAILS string
         COURSE_OPTIONS = [course['name'] for course in config['courses']]
         BANK_DETAILS = (
             f"Bank Name: {config['bank_details']['name']}\n"
@@ -203,7 +193,260 @@ async def reload_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(error_msg)
         await update.message.reply_text(error_msg)
 
-# ... other functions ...
+async def cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lists all available commands for the admin."""
+    if update.effective_user.id != ADMIN_USER_ID:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+
+    commands = [
+        "📌 **Admin Commands:**",
+        "/pending - List pending enrollments and certificate applications",
+        "/active - List active students with expiry dates",
+        "/expired - List expired students",
+        "/reload_config - Reload configuration from file",
+        "/edit_config - Edit bot configuration",
+        "",
+        "📌 **Verification Commands:**",
+        "/verify_<user_id> - Approve a student's enrollment",
+        "/deny_<user_id> - Deny a student's enrollment",
+        "/cert_verify_<user_id> - Approve a certificate payment",
+        "/cert_deny_<user_id> - Deny a certificate payment",
+        "",
+        "📌 **Student Commands:**",
+        "/start - Begin enrollment process",
+        "/certificate - Apply for a course certificate"
+    ]
+
+    await update.message.reply_text("\n".join(commands), parse_mode='Markdown')
+
+async def edit_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the config editing process."""
+    if update.effective_user.id != ADMIN_USER_ID:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return ConversationHandler.END
+
+    keyboard = [
+        ["Bot Settings", "Messages"],
+        ["Courses", "Bank Details"],
+        ["Cancel"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    await update.message.reply_text(
+        "Which section of the config would you like to edit?",
+        reply_markup=reply_markup
+    )
+    return EDITING_CONFIG_SECTION
+
+async def edit_config_section(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles selection of config section to edit."""
+    section = update.message.text.lower().replace(" ", "_")
+    context.user_data['config_section'] = section
+    
+    if section == "cancel":
+        await update.message.reply_text("Config editing cancelled.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    
+    if section == "courses":
+        keyboard = [[course['name'] for course in config['courses']] + ["Add New Course"], ["Cancel"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        await update.message.reply_text(
+            "Select a course to edit or 'Add New Course':",
+            reply_markup=reply_markup
+        )
+        return EDITING_COURSE_INDEX
+    else:
+        if section not in config:
+            await update.message.reply_text("Invalid section. Please try again.")
+            return EDITING_CONFIG_SECTION
+            
+        keys = list(config[section].keys())
+        keyboard = [[key] for key in keys] + [["Cancel"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"Which key in '{section}' would you like to edit?",
+            reply_markup=reply_markup
+        )
+        return EDITING_CONFIG_KEY
+
+async def edit_config_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles selection of config key to edit."""
+    key = update.message.text
+    context.user_data['config_key'] = key
+    
+    if key == "Cancel":
+        await update.message.reply_text("Config editing cancelled.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    
+    section = context.user_data['config_section']
+    current_value = config[section][key]
+    
+    if isinstance(current_value, dict):
+        keys = list(current_value.keys())
+        keyboard = [[key] for key in keys] + [["Cancel"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"Which nested key in '{section}.{key}' would you like to edit?",
+            reply_markup=reply_markup
+        )
+        context.user_data['nested_section'] = section
+        context.user_data['nested_key'] = key
+        return EDITING_CONFIG_KEY
+    else:
+        await update.message.reply_text(
+            f"Current value for '{section}.{key}':\n{current_value}\n\n"
+            f"Please enter the new value:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return EDITING_CONFIG_VALUE
+
+async def edit_config_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles entering a new config value."""
+    new_value = update.message.text
+    section = context.user_data.get('config_section')
+    key = context.user_data.get('config_key')
+    
+    if 'nested_section' in context.user_data:
+        nested_section = context.user_data['nested_section']
+        nested_key = context.user_data['nested_key']
+        
+        try:
+            new_value = int(new_value)
+        except ValueError:
+            try:
+                new_value = float(new_value)
+            except ValueError:
+                pass
+        
+        config[nested_section][nested_key][key] = new_value
+        await update.message.reply_text(
+            f"Updated {nested_section}.{nested_key}.{key} to:\n{new_value}"
+        )
+    else:
+        if new_value.lower() in ['true', 'false']:
+            new_value = new_value.lower() == 'true'
+        else:
+            try:
+                new_value = int(new_value)
+            except ValueError:
+                try:
+                    new_value = float(new_value)
+                except ValueError:
+                    pass
+        
+        config[section][key] = new_value
+        await update.message.reply_text(
+            f"Updated {section}.{key} to:\n{new_value}"
+        )
+    
+    try:
+        with open('config.json', 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+        await update.message.reply_text("✅ Config saved successfully!")
+    except Exception as e:
+        logger.error(f"Error saving config: {e}")
+        await update.message.reply_text(f"❌ Error saving config: {e}")
+    
+    return ConversationHandler.END
+
+async def edit_course_index(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles selection of course to edit."""
+    choice = update.message.text
+    context.user_data['course_choice'] = choice
+    
+    if choice == "Cancel":
+        await update.message.reply_text("Config editing cancelled.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    
+    if choice == "Add New Course":
+        new_course = {
+            "name": "New Course",
+            "price": 0,
+            "group_id": 0,
+            "duration_days": 30,
+            "certificate_price": 0,
+            "certificate_wait_days": 0
+        }
+        config['courses'].append(new_course)
+        context.user_data['course_index'] = len(config['courses']) - 1
+        
+        try:
+            with open('config.json', 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error saving config: {e}")
+            await update.message.reply_text(f"❌ Error saving config: {e}")
+            return ConversationHandler.END
+        
+        await update.message.reply_text("Created new course. Now editing...")
+    else:
+        for i, course in enumerate(config['courses']):
+            if course['name'] == choice:
+                context.user_data['course_index'] = i
+                break
+        else:
+            await update.message.reply_text("Course not found. Please try again.")
+            return EDITING_COURSE_INDEX
+    
+    course_fields = list(config['courses'][0].keys())
+    keyboard = [[field] for field in course_fields] + [["Cancel"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    
+    await update.message.reply_text(
+        "Which field would you like to edit?",
+        reply_markup=reply_markup
+    )
+    return EDITING_COURSE_FIELD
+
+async def edit_course_field(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles editing a specific course field."""
+    field = update.message.text
+    context.user_data['course_field'] = field
+    
+    if field == "Cancel":
+        await update.message.reply_text("Config editing cancelled.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+    
+    course_index = context.user_data['course_index']
+    current_value = config['courses'][course_index][field]
+    
+    await update.message.reply_text(
+        f"Current value for '{field}':\n{current_value}\n\n"
+        f"Please enter the new value:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return EDITING_CONFIG_VALUE
+
+async def edit_course_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles entering a new course field value."""
+    new_value = update.message.text
+    course_index = context.user_data['course_index']
+    field = context.user_data['course_field']
+    
+    if field in ['price', 'group_id', 'duration_days', 'certificate_price', 'certificate_wait_days']:
+        try:
+            new_value = int(new_value)
+        except ValueError:
+            await update.message.reply_text("Please enter a valid integer for this field.")
+            return EDITING_CONFIG_VALUE
+    
+    config['courses'][course_index][field] = new_value
+    
+    try:
+        with open('config.json', 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+        await update.message.reply_text(
+            f"✅ Updated course '{config['courses'][course_index]['name']}.{field}' to:\n{new_value}\n\n"
+            "Config saved successfully!"
+        )
+    except Exception as e:
+        logger.error(f"Error saving config: {e}")
+        await update.message.reply_text(f"❌ Error saving config: {e}")
+    
+    return ConversationHandler.END
 
 # --- Command Handlers for Enrollment Conversation ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -211,7 +454,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
     welcome_message = config['messages']['welcome'].format(user_mention=user.mention_html())
     
-    # Create an inline keyboard with "Enroll Now" button
     keyboard = [
         [InlineKeyboardButton("Enroll Now", callback_data="start_enrollment")]
     ]
@@ -228,14 +470,11 @@ async def start_enrollment_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     
-    # Store user ID and chat ID for the conversation
     context.user_data['telegram_user_id'] = query.from_user.id
     context.user_data['chat_id'] = query.message.chat_id
     
-    # Prompt for full name
     await query.message.reply_text("Great! What is your full name?")
     return ASKING_FULL_NAME
-
 
 async def get_full_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stores the full name and asks for the phone number."""
@@ -314,16 +553,7 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     photo_file = update.message.photo[-1]
     
-    # Send to admin channel. Handle potential "Request Entity Too Large" error.
-    caption = config['messages']['admin_notification'].format(
-        user_id=user_id,
-        user_name=user_data.get('full_name'),
-        phone_number=user_data.get('phone_number'),
-        course_name=user_data.get('course_selected')
-    )
-
     try:
-        # Attempt to send the photo
         await context.bot.send_photo(
             chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
             photo=photo_file.file_id,
@@ -331,7 +561,6 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
     except Exception as e:
         logger.error(f"Failed to send admin notification: {e}")
-        # If the photo is too big, send a text notification instead.
         full_caption = (
             f"⚠️ **Error: Photo Too Large!** ⚠️\n\n"
             f"{caption}\n"
@@ -354,9 +583,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return ConversationHandler.END
 
-
 # --- Command Handlers for Certificate Conversation ---
-
 async def certificate_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the certificate application process."""
     user = update.effective_user
@@ -397,7 +624,6 @@ async def certificate_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text(message)
     return WAITING_FOR_CERTIFICATE_RECEIPT
 
-
 async def receive_certificate_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the received certificate payment receipt."""
     user_data = context.user_data
@@ -418,14 +644,7 @@ async def receive_certificate_receipt(update: Update, context: ContextTypes.DEFA
     
     photo_file = update.message.photo[-1]
 
-    caption = config['messages']['certificate_pending_admin_notification'].format(
-        user_id=user_id,
-        user_name=database.get_student_info(user_id)[2],
-        course_name=user_data.get('course_name')
-    )
-
     try:
-        # Attempt to send the photo
         await context.bot.send_photo(
             chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
             photo=photo_file.file_id,
@@ -433,7 +652,6 @@ async def receive_certificate_receipt(update: Update, context: ContextTypes.DEFA
         )
     except Exception as e:
         logger.error(f"Failed to send admin notification for certificate: {e}")
-        # If the photo is too big, send a text notification instead.
         full_caption = (
             f"⚠️ **Error: Certificate Photo Too Large!** ⚠️\n\n"
             f"{caption}\n"
@@ -460,9 +678,7 @@ async def re_enroll_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     return ASKING_FULL_NAME
 
-
 # --- Admin Command Handlers ---
-
 async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Verifies a student's payment and adds them to the course group."""
     if update.effective_user.id != ADMIN_USER_ID:
@@ -486,7 +702,6 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"Student {student_id} is already verified.")
         return
 
-    # Update status and save verification date
     verification_date = datetime.datetime.now()
     if database.update_payment_status(student_id, 'verified', verification_date):
         
@@ -578,7 +793,6 @@ async def cert_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(admin_success_message)
     else:
         await update.message.reply_text(f"Failed to update certificate status for student {student_id}.")
-
 
 async def cert_deny(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Denies a student's certificate payment."""
@@ -684,11 +898,9 @@ async def expired(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await update.message.reply_text("No expired students found.")
 
-
 async def start_certificate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """A command handler that serves as a direct entry point for the certificate conversation."""
     return await certificate_entry(update, context)
-
 
 def main() -> None:
     """Start the bot."""
@@ -699,22 +911,37 @@ def main() -> None:
     # Schedule a daily job for automated checks
     job_queue = application.job_queue
     job_queue.run_daily(check_expiry_and_notify, time=datetime.time(hour=10, minute=0, tzinfo=datetime.timezone.utc))
-    # Reload config command for admin
+    
+    # Add command handlers
+    application.add_handler(CommandHandler("cmd", cmd))
     application.add_handler(CommandHandler("reload_config", reload_config))
+    
+    # Config editing conversation handler
+    config_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("edit_config", edit_config)],
+        states={
+            EDITING_CONFIG_SECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_config_section)],
+            EDITING_CONFIG_KEY: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_config_key)],
+            EDITING_CONFIG_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_config_value)],
+            EDITING_COURSE_INDEX: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course_index)],
+            EDITING_COURSE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course_field)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
     # Enrollment Conversation
     enrollment_conv_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("start", start),
-        CallbackQueryHandler(start_enrollment_callback, pattern="^start_enrollment$")
-    ],
-    states={
-        ASKING_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
-        ASKING_PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
-        ASKING_COURSE_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course_selection)],
-        WAITING_FOR_RECEIPT: [MessageHandler(filters.PHOTO & ~filters.COMMAND, receive_receipt)],
-    },
-    fallbacks=[CommandHandler("cancel", cancel)]
+        entry_points=[
+            CommandHandler("start", start),
+            CallbackQueryHandler(start_enrollment_callback, pattern="^start_enrollment$")
+        ],
+        states={
+            ASKING_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
+            ASKING_PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
+            ASKING_COURSE_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course_selection)],
+            WAITING_FOR_RECEIPT: [MessageHandler(filters.PHOTO & ~filters.COMMAND, receive_receipt)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
     
     # Certificate Conversation
@@ -725,10 +952,11 @@ def main() -> None:
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         map_to_parent={
-            ConversationHandler.END: ConversationHandler.END # Allows canceling a sub-conversation
+            ConversationHandler.END: ConversationHandler.END
         }
     )
 
+    application.add_handler(config_conv_handler)
     application.add_handler(enrollment_conv_handler)
     application.add_handler(cert_conv_handler)
     
@@ -742,8 +970,7 @@ def main() -> None:
     application.add_handler(CommandHandler("expired", expired))
     
     # Callback handler for the re-enroll button
-    application.add_handler(MessageHandler(filters.Regex('^re_enroll$'), re_enroll_callback))
-
+    application.add_handler(CallbackQueryHandler(re_enroll_callback, pattern="^re_enroll$"))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
