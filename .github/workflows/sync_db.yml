@@ -1,0 +1,21 @@
+name: Sync DB
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 3 AM
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download DB from Render
+        run: |
+          scp -o StrictHostKeyChecking=no \
+            render@${{ secrets.RENDER_SERVER }}:/opt/render/project/src/students.db \
+            ./backups/students_$(date +%Y%m%d).db
+      - name: Push to GitHub
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add backups/
+          git commit -m "Daily DB sync"
+          git push
