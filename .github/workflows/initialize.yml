@@ -1,0 +1,20 @@
+name: Initialize Backup System
+on: [workflow_dispatch]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create backup directory on Render
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "create-backup-dir",
+              "serviceId": "${{ secrets.RENDER_SERVICE_ID }}",
+              "startCommand": "mkdir -p /opt/render/project/src/backups && touch /opt/render/project/src/backups/.gitkeep"
+            }' \
+            https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys
