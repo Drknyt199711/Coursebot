@@ -14,6 +14,20 @@ from telegram.ext import (
 )
 import database
 
+# Add these new imports at the top
+from flask import Flask
+from threading import Thread
+
+# Add this after imports (before bot code)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=8000)
+
 # Set up logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -974,5 +988,7 @@ def main() -> None:
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+# Add this right before if __name__ == "__main__":
+Thread(target=run_flask).start()
 if __name__ == "__main__":
     main()
