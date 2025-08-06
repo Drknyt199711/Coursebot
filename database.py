@@ -103,7 +103,7 @@ def get_expired_students():
     expired_students = cursor.fetchall()
     conn.close()
     return expired_students
-    
+
 def get_verified_students_for_job():
     """Retrieves all students for the daily job to check expiry and certificate eligibility."""
     conn = sqlite3.connect(DATABASE_NAME)
@@ -138,7 +138,7 @@ def add_certificate_receipt(user_id, receipt_image):
     conn.commit()
     conn.close()
     return True
-    
+
 def get_pending_cert_students():
     """Retrieves all students with 'pending' certificate status."""
     conn = sqlite3.connect(DATABASE_NAME)

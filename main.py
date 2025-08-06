@@ -9,7 +9,8 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
-    ConversationHandler
+    ConversationHandler,
+    CallbackQueryHandler
 )
 import database
 
@@ -158,16 +159,83 @@ async def check_expiry_and_notify(context: ContextTypes.DEFAULT_TYPE) -> None:
                 except Exception as e:
                     logger.error(f"Failed to send certificate eligibility message to student {user_id}: {e}")
 
-# --- Command Handlers for Enrollment Conversation ---
+# ... other functions ...
 
+async def reload_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reloads the configuration from config.json."""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_USER_ID:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+
+    global config
+    global PAYMENT_CONFIRMATION_CHANNEL_ID
+    global COURSE_MANAGER_CHANNEL_ID
+    global courses
+    global COURSE_OPTIONS # New: Add this to update the keyboard options
+    global BANK_DETAILS # New: Add this to update bank details
+
+    try:
+        with open('config.json', 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # Re-assign global variables from the reloaded config
+        PAYMENT_CONFIRMATION_CHANNEL_ID = config['bot']['payment_confirmation_channel_id']
+        EXPIRY_NOTIFICATION_GROUP_ID = config['bot']['expiry_notification_group_id']
+        courses = config['courses']
+        
+        # New: Rebuild the COURSE_OPTIONS list and BANK_DETAILS string
+        COURSE_OPTIONS = [course['name'] for course in config['courses']]
+        BANK_DETAILS = (
+            f"Bank Name: {config['bank_details']['name']}\n"
+            f"Account Holder: {config['bank_details']['account_holder']}\n"
+            f"Account Number: {config['bank_details']['account_number']}"
+        )
+        
+        logger.info("Configuration has been successfully reloaded.")
+        await update.message.reply_text("✅ Configuration reloaded successfully!")
+    except FileNotFoundError:
+        error_msg = "❌ Error: config.json not found."
+        logger.error(error_msg)
+        await update.message.reply_text(error_msg)
+    except json.JSONDecodeError:
+        error_msg = "❌ Error: Failed to parse config.json. Please check for syntax errors."
+        logger.error(error_msg)
+        await update.message.reply_text(error_msg)
+
+# ... other functions ...
+
+# --- Command Handlers for Enrollment Conversation ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the enrollment conversation."""
+    """Starts the conversation with an enrollment button."""
     user = update.effective_user
     welcome_message = config['messages']['welcome'].format(user_mention=user.mention_html())
-    await update.message.reply_html(welcome_message)
-    context.user_data['telegram_user_id'] = user.id
-    context.user_data['chat_id'] = update.effective_chat.id
+    
+    # Create an inline keyboard with "Enroll Now" button
+    keyboard = [
+        [InlineKeyboardButton("Enroll Now", callback_data="start_enrollment")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_html(
+        welcome_message,
+        reply_markup=reply_markup
+    )
+    return ConversationHandler.END
+
+async def start_enrollment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the 'Enroll Now' button press."""
+    query = update.callback_query
+    await query.answer()
+    
+    # Store user ID and chat ID for the conversation
+    context.user_data['telegram_user_id'] = query.from_user.id
+    context.user_data['chat_id'] = query.message.chat_id
+    
+    # Prompt for full name
+    await query.message.reply_text("Great! What is your full name?")
     return ASKING_FULL_NAME
+
 
 async def get_full_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stores the full name and asks for the phone number."""
@@ -221,7 +289,7 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = user_data.get('telegram_user_id')
     
     photo_file = update.message.photo[-1]
-    image_bytes = await photo_file.get_file().download_as_bytearray()
+    image_bytes = await (await photo_file.get_file()).download_as_bytearray()
     
     database.add_student(
         user_id=user_id,
@@ -244,17 +312,36 @@ async def receive_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         course_name=user_data.get('course_selected')
     )
     
+    photo_file = update.message.photo[-1]
+    
+    # Send to admin channel. Handle potential "Request Entity Too Large" error.
+    caption = config['messages']['admin_notification'].format(
+        user_id=user_id,
+        user_name=user_data.get('full_name'),
+        phone_number=user_data.get('phone_number'),
+        course_name=user_data.get('course_selected')
+    )
+
     try:
+        # Attempt to send the photo
         await context.bot.send_photo(
             chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
-            photo=image_bytes,
+            photo=photo_file.file_id,
             caption=caption
         )
     except Exception as e:
         logger.error(f"Failed to send admin notification: {e}")
+        # If the photo is too big, send a text notification instead.
+        full_caption = (
+            f"⚠️ **Error: Photo Too Large!** ⚠️\n\n"
+            f"{caption}\n"
+            f"File ID: `{photo_file.file_id}`\n"
+            f"You can view the full file by forwarding it from the student's chat."
+        )
         await context.bot.send_message(
-            chat_id=ADMIN_USER_ID,
-            text=f"ERROR: Could not send enrollment notification to channel. Details for student {user_id}:\n{caption}"
+            chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
+            text=full_caption,
+            parse_mode='Markdown'
         )
     
     return ConversationHandler.END
@@ -317,7 +404,7 @@ async def receive_certificate_receipt(update: Update, context: ContextTypes.DEFA
     user_id = update.effective_user.id
     
     photo_file = update.message.photo[-1]
-    image_bytes = await photo_file.get_file().download_as_bytearray()
+    image_bytes = await (await photo_file.get_file()).download_as_bytearray()
     
     database.add_certificate_receipt(user_id, image_bytes)
     
@@ -329,17 +416,34 @@ async def receive_certificate_receipt(update: Update, context: ContextTypes.DEFA
         course_name=user_data.get('course_name')
     )
     
+    photo_file = update.message.photo[-1]
+
+    caption = config['messages']['certificate_pending_admin_notification'].format(
+        user_id=user_id,
+        user_name=database.get_student_info(user_id)[2],
+        course_name=user_data.get('course_name')
+    )
+
     try:
+        # Attempt to send the photo
         await context.bot.send_photo(
             chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
-            photo=image_bytes,
+            photo=photo_file.file_id,
             caption=caption
         )
     except Exception as e:
         logger.error(f"Failed to send admin notification for certificate: {e}")
+        # If the photo is too big, send a text notification instead.
+        full_caption = (
+            f"⚠️ **Error: Certificate Photo Too Large!** ⚠️\n\n"
+            f"{caption}\n"
+            f"File ID: `{photo_file.file_id}`\n"
+            f"You can view the full file by forwarding it from the student's chat."
+        )
         await context.bot.send_message(
-            chat_id=ADMIN_USER_ID,
-            text=f"ERROR: Could not send certificate notification to channel. Details for student {user_id}:\n{caption}"
+            chat_id=PAYMENT_CONFIRMATION_CHANNEL_ID,
+            text=full_caption,
+            parse_mode='Markdown'
         )
     
     return ConversationHandler.END
@@ -595,17 +699,22 @@ def main() -> None:
     # Schedule a daily job for automated checks
     job_queue = application.job_queue
     job_queue.run_daily(check_expiry_and_notify, time=datetime.time(hour=10, minute=0, tzinfo=datetime.timezone.utc))
+    # Reload config command for admin
+    application.add_handler(CommandHandler("reload_config", reload_config))
 
     # Enrollment Conversation
     enrollment_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            ASKING_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
-            ASKING_PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
-            ASKING_COURSE_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course_selection)],
-            WAITING_FOR_RECEIPT: [MessageHandler(filters.PHOTO & ~filters.COMMAND, receive_receipt)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
+    entry_points=[
+        CommandHandler("start", start),
+        CallbackQueryHandler(start_enrollment_callback, pattern="^start_enrollment$")
+    ],
+    states={
+        ASKING_FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
+        ASKING_PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
+        ASKING_COURSE_SELECTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course_selection)],
+        WAITING_FOR_RECEIPT: [MessageHandler(filters.PHOTO & ~filters.COMMAND, receive_receipt)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)]
     )
     
     # Certificate Conversation
@@ -624,10 +733,10 @@ def main() -> None:
     application.add_handler(cert_conv_handler)
     
     # Admin command handlers
-    application.add_handler(CommandHandler(re.compile(r"verify_\d+"), verify))
-    application.add_handler(CommandHandler(re.compile(r"deny_\d+"), deny))
-    application.add_handler(CommandHandler(re.compile(r"cert_verify_\d+"), cert_verify))
-    application.add_handler(CommandHandler(re.compile(r"cert_deny_\d+"), cert_deny))
+    application.add_handler(MessageHandler(filters.Regex(r"^/verify_\d+$") & filters.COMMAND, verify))
+    application.add_handler(MessageHandler(filters.Regex(r"^/deny_\d+$") & filters.COMMAND, deny))
+    application.add_handler(MessageHandler(filters.Regex(r"^/cert_verify_\d+$") & filters.COMMAND, cert_verify))
+    application.add_handler(MessageHandler(filters.Regex(r"^/cert_deny_\d+$") & filters.COMMAND, cert_deny))
     application.add_handler(CommandHandler("pending", pending))
     application.add_handler(CommandHandler("active", active))
     application.add_handler(CommandHandler("expired", expired))

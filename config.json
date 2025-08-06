@@ -1,19 +1,20 @@
 {
   "bot": {
-    "api_token": "YOUR_BOT_API_TOKEN_HERE",
+    "api_token": "8280670695:AAE82yfE4J4eBQdUY4RSSrouGPC8t6K_Zd4",
     "admin_user_id": 7637175761,
-    "payment_confirmation_channel_id": -1002627956917,
-    "expiry_notification_group_id": -1002591629858
+    "payment_confirmation_channel_id": -1002659528888,
+    "expiry_notification_group_id": -1002659528888
   },
   "messages": {
-    "welcome": "Hello, {user_mention}! Welcome to the online course enrollment system. To get started, please provide your full name.",
+    "welcome": "Hello, {user_mention}! Welcome to our course platform. Tap the button below to start enrollment.",
+    "enroll_prompt": "Tap 'Enroll Now' to begin the registration process.",
     "ask_phone": "Thank you! Now, please provide your Ethiopian phone number. Example: 0912345678 or +251912345678",
     "invalid_phone": "That doesn't seem to be a valid Ethiopian phone number format. Please try again. Example: 0912345678 or +251912345678",
     "ask_course": "Great! Now, please select the course you would like to enroll in:",
     "payment_instructions": "You have selected: {course_name}.\n\nPlease make a payment of {course_price} ETB to the following bank account and send us a photo of the receipt.\n\n{bank_details}\n\nAfter you have made the payment, please send the photo of the receipt to me in this chat. You can now send the image directly.",
     "enrollment_success": "Thank you for submitting your enrollment form! Your payment is now pending verification. We will notify you once it's confirmed.",
     "admin_notification": "NEW ENROLLMENT PENDING!\n\nTelegram User ID: {user_id}\nName: {user_name}\nPhone: {phone_number}\nCourse: {course_name}\n\nAction: /verify_{user_id} or /deny_{user_id}",
-    "verification_success_student": "Congratulations, {user_name}! Your payment for the course has been verified. You now have access to our exclusive course content!",
+    "verification_success_student": "Congratulations, {user_name}! Your payment for the course has been verified. You now have access to our exclusive course content! Click the link below to join https://t.me/+6y3yxn1aNvc4MGM0",
     "verification_success_admin": "Student {user_name} ({user_id}) verified and added to the course group.",
     "verification_fail_student": "We encountered an issue verifying your payment. Please ensure your receipt is clear or contact support if you believe this is an error.",
     "verification_fail_admin": "Student {user_name} ({user_id}) payment denied.",
@@ -38,12 +39,12 @@
       "group_id": -1002659528888,
       "duration_days": 90,
       "certificate_price": 500,
-      "certificate_wait_days": 30
+      "certificate_wait_days": 0
     },
     {
       "name": "Adobe Premiere Pro Course",
       "price": 800,
-      "group_id": -1002621458888,
+      "group_id": -1002659528888,
       "duration_days": 90,
       "certificate_price": 500,
       "certificate_wait_days": 30
@@ -51,7 +52,7 @@
     {
       "name": "Both Courses (Bundle)",
       "price": 1500,
-      "group_id": -1002871752888,
+      "group_id": -1002659528888,
       "duration_days": 120,
       "certificate_price": 800,
       "certificate_wait_days": 60
