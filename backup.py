@@ -1,23 +1,22 @@
-# backup.py - Runs entirely in GitHub's environment
+# Updated backup.py
 import sqlite3
 import os
 from datetime import datetime
-from github import Github  # PyGitHub library
 
-# 1. Initialize (GitHub token from secrets)
-g = Github(os.getenv('GITHUB_TOKEN'))
-repo = g.get_repo("your-username/your-repo")
+# 1. Use Render's absolute paths
+DB_PATH = "/opt/render/project/src/students.db"
+BACKUP_DIR = "/opt/render/project/src/backups/"
 
-# 2. Create in-memory backup
+# 2. Force-create backup directory
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+# 3. Create human-readable SQL dump
 timestamp = datetime.now().strftime("%Y%m%d")
-backup_content = ""
-with sqlite3.connect("students.db") as conn:
-    for line in conn.iterdump():
-        backup_content += line + "\n"
+backup_path = f"{BACKUP_DIR}students_{timestamp}.sql"
 
-# 3. Push to GitHub as a new file
-repo.create_file(
-    path=f"backups/students_{timestamp}.sql",
-    message=f"Automated backup {timestamp}",
-    content=backup_content
-)
+with sqlite3.connect(DB_PATH) as conn:
+    with open(backup_path, 'w') as f:
+        for line in conn.iterdump():
+            f.write(f"{line}\n")
+
+print(f"Backup created at {backup_path}")
