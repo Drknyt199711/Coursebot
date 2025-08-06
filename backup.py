@@ -1,17 +1,23 @@
+# backup.py - Runs entirely in GitHub's environment
 import sqlite3
 import os
 from datetime import datetime
+from github import Github  # PyGitHub library
 
-# 1. Create a timestamped backup
-timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-backup_file = f"backups/students_{timestamp}.db"
-os.makedirs("backups", exist_ok=True)
+# 1. Initialize (GitHub token from secrets)
+g = Github(os.getenv('GITHUB_TOKEN'))
+repo = g.get_repo("your-username/your-repo")
 
-# 2. Safely copy the database (avoid corruption)
-with sqlite3.connect('students.db') as src:
-    with sqlite3.connect(backup_file) as dst:
-        src.backup(dst)
+# 2. Create in-memory backup
+timestamp = datetime.now().strftime("%Y%m%d")
+backup_content = ""
+with sqlite3.connect("students.db") as conn:
+    for line in conn.iterdump():
+        backup_content += line + "\n"
 
-print(f"Backup created: {backup_file}")
-
-# 3. Optional: Upload to cloud storage (see next section)
+# 3. Push to GitHub as a new file
+repo.create_file(
+    path=f"backups/students_{timestamp}.sql",
+    message=f"Automated backup {timestamp}",
+    content=backup_content
+)
